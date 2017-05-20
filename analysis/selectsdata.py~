@@ -1,0 +1,101 @@
+#######################################
+## make a selection of the day       ##
+## usable for the analysis based on  ##
+## an iterative fit of the           ##
+## temperature dependence            ##
+#######################################
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import os
+cwd = os.getcwd()
+classpath = cwd + '/../classes/'
+utilspath = cwd + '/../utils/'
+sys.path.append(utilspath)
+sys.path.append(classpath)
+import constant
+import utils
+import pickle
+import dataset
+import argparse
+
+
+############################
+##  argument parser       ##
+############################
+parser = argparse.ArgumentParser()
+parser.add_argument("stname", type=str, nargs='?',default='popey', help="station name")
+args = parser.parse_args()
+
+st = args.stname
+if st == 'all':
+    stnames = GDstationidbyname.keys()
+else:
+    stnames = [st]
+
+
+for stname in stnames:
+    stid = constant.GIGASstationidbyname[stname]
+
+    humidity = np.array([])
+    time = np.array([])
+    a_radio = np.array([])
+    a_temp = np.array([])
+    
+    nrofday = constant.doy
+    a_rms = np.array([])
+    counter = 0
+
+    for y in [2015,2016,2017]:
+        for d in range(1,nrofday[y]+1,1):
+            outfolder = constant.dataresultfolder + str(stid)
+            datafilename = outfolder + '/data_' + str(int(y)) + '_' + str(int(d)) + '.pkl'
+            if os.path.isfile(datafilename):
+                datafile = open(datafilename,'rb')
+            else:
+                continue
+            thedata = pickle.load(datafile)
+            minradio = np.min(thedata.data)
+            maxradio = np.max(thedata.data)
+
+
+        #### diff min max selection:
+            diffmax = 300
+            if maxradio - minradio > diffmax:
+                #            fig = plt.figure()
+                #            plt.plot(thedata.data)
+                datafile.close()
+                continue
+
+
+        #### humidity selection:
+            humsel = 100
+            if (thedata.humidity > humsel).any():
+                datafile.close()
+                continue
+
+
+
+#    print thedata.humidity
+            cradio = thedata.data - np.mean(thedata.data)
+            a_radio = np.append(a_radio, cradio)
+            ctemp = thedata.tempLL - np.mean(thedata.tempLL)
+            a_temp = np.append(a_temp, ctemp)
+            a_rms = np.append(a_rms,np.std(cradio))
+            counter += 1
+            datafile.close()
+
+
+    print ' counter = ' , counter
+    figcorrel = plt.figure()
+    figcorrel.suptitle(stname)
+    plt.plot(a_temp, a_radio,'.')
+    plt.xlabel('temperature [C]')
+    plt.ylabel('radio baseline [ADC]')
+    fighist = plt.figure()
+    fighist.suptitle(stname)
+    plt.hist(a_rms,bins=100)
+    plt.xlabel('radio baseline [ADC]')
+
+#plt.plot(d_array,h_array)
+plt.show()

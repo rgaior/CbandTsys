@@ -1,0 +1,98 @@
+###################################
+## fit of the daily radio signal ##
+###################################
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import os
+cwd = os.getcwd()
+classpath = cwd + '/../classes/'
+utilspath = cwd + '/../utils/'
+sys.path.append(utilspath)
+sys.path.append(classpath)
+from scipy.optimize import curve_fit
+import datetime
+import constant
+import utils
+import pickle
+import dataset
+import daydata
+import analyse
+import argparse
+import matplotlib as mpl
+import glob
+############################
+##  argument parser       ##
+############################
+parser = argparse.ArgumentParser()
+parser.add_argument("stname", type=str, nargs='?',default='popey', help="station name")
+parser.add_argument("--fitmethod", type=int, nargs='?',default='0', help="")
+args = parser.parse_args()
+stname = args.stname
+fitmethod= args.fitmethod
+stid = constant.GDstationidbyname[stname]
+
+resfolder = constant.resfolder
+theta = range(-30,30,1)
+phi = range(-30,30,1)
+
+a_chi2_tsys = np.ndarray(shape=(len(phi), len(theta) ))
+a_chi2_tofmax = np.ndarray(shape=(len(phi), len(theta) ))
+a_chi2_all = np.ndarray(shape=(len(phi), len(theta) ))
+a_nroffit = np.ndarray(shape=(len(phi), len(theta) ))
+
+chi2allmin = 1000
+thetamin = 0
+phimin = 0
+newt,newp = np.meshgrid(theta,phi)
+print newt
+print newp
+
+phiiter = range(0,len(newp),1)
+fname = constant.mainfolder + '/results/' + '/res_'+ stname + '.npz'
+file = np.load(fname)
+ftheta = file['theta']
+fphi = file['phi']
+fchi2tsys = file['chi2tsys']
+fchi2tofmax = file['chi2tofmax']
+fnroffit = file['fits']
+maxnroffit = np.max(fnroffit)
+
+newnroffit = np.array([])
+# first pass to find the minimum chi2
+minchi2tsys = 1000
+minchi2tofmax = 1000
+
+minthetatsys = 0
+minphitsys = 0
+minthetatofmax = 0
+minphitofmax = 0
+
+
+chiallmin = 1000
+mintheta = 0
+minphi = 0
+
+factorfits = 0.95
+a_nroffit = np.array([])
+a_theta = np.array([])
+a_phi = np.array([])
+for iter in phiiter:
+    phi_chi2 = np.array([])
+    tcount = 0
+    for t,p in zip(newt[iter],newp[iter]):
+        index = np.where( (ftheta == t) & (fphi == p) )
+        thet = ftheta[index]
+        thep = fphi[index]
+        thechi2tsys = fchi2tsys[index]
+        thechi2tofmax = fchi2tofmax[index]
+        thenroffit = fnroffit[index]
+        thechi2tofmax = fchi2tofmax[index]
+        thenroffit = fnroffit[index]
+        a_nroffit = np.append(a_nroffit,float(thenroffit)/maxnroffit)
+        a_theta = np.append(a_theta, t)
+        a_phi = np.append(a_phi, p)
+
+print 'a_nroffit = ' , a_nroffit
+plt.scatter(a_theta,a_phi,s=20,color=a_nroffit)
+plt.show()

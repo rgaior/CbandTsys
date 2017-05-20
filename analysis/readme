@@ -1,0 +1,27 @@
+step to perform the analysis:
+
+1. produce the daily data with:  producedailydata.py
+   for all the days contained in corinne's code.
+
+2. produce a selection of the days to keep for the analysis: selectdays.py
+   - a first selection is done by keeping only months from november to march
+   - we perform an iterative fit of the temperature until the rms of the baseline is smaller than ??
+   - this gives a temperature dependance and allow to select a set of stable baselines
+   - the fit values and error are in the files /tempfit/tempfit_"name".npy
+
+3. perform the fit on the data: fitdata.py
+   (The fit is performed only once (independently of the orientation) we simply take a window large enough.)
+   - load the data
+   - load the simulation for nominal orientation
+   - fit the data in a window of ?? hours
+   - writes fit results: results, error matrix and chi2
+      
+
+4. fit the sun bump and compute the system temperature with fitradio.py
+   - corrects for the temperature dependence
+   - fit with a gaussian
+   - computes the error on each measurement
+   - computes the weighted mean and error
+
+   
+   

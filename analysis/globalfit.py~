@@ -1,0 +1,260 @@
+###################################
+## fit of the daily radio signal ##
+###################################
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import os
+cwd = os.getcwd()
+classpath = cwd + '/../classes/'
+utilspath = cwd + '/../utils/'
+sys.path.append(utilspath)
+sys.path.append(classpath)
+from scipy.optimize import curve_fit
+import datetime
+import constant
+import utils
+import pickle
+import glob
+import dataset
+import daydata
+import analyse
+import argparse
+import matplotlib as mpl
+
+############################
+##  argument parser       ##
+############################
+parser = argparse.ArgumentParser()
+parser.add_argument("stname", type=str, nargs='?',default='popey', help="station name")
+parser.add_argument("fitmethod", type=int, nargs='?',default='0', help="0: fit with gauss + 2nd order poly  / 1: fit with gauss + constant" )
+parser.add_argument("-list", type=str, help="list of good days")
+
+args = parser.parse_args()
+fitmethod = args.fitmethod
+stname = args.stname
+
+stname = args.stname
+stid = constant.GDstationidbyname[stname]
+if args.list:
+    listfile = args.list
+    goodlistname = listfile
+else:
+    goodlistname = 'newlist_' +  stname + '.txt'
+[goodyear,goodday] = utils.getdaysfromlist(constant.listfolder + goodlistname)
+
+a_tsys = np.array([])
+a_errtsys = np.array([])
+
+datafolder = constant.datafolder
+if fitmethod ==0:
+    datafitfolder = constant.datafitfolder
+if fitmethod ==1:
+    datafitfolder = constant.datafitfolder2
+
+pi = np.pi
+
+a_chi2 = np.array([])
+a_meantsys = np.array([])
+
+mintofmax = 10000
+maxtofmax = -1
+maxmax = -1000
+minmax = 1000
+a_chi2tofmax = np.array([])
+a_nroffit = np.array([])
+a_chi2tsys = np.array([])
+a_chi2all = np.array([])
+a_theta = np.array([])
+a_phi = np.array([])
+
+detector = 'norsat'
+if detector == 'norsat':
+    centertheta =  constant.GDantennageo[stname][0]
+    centerphi =  constant.GDantennageo[stname][1]
+elif detector == 'helix':
+    centertheta =  constant.Helixantennageo[stname][0]
+    centerphi =  constant.Helixantennageo[stname][1]
+
+deltmax = 50
+deltathetas = range(0,deltmax + 1,1)
+nrofpointmax = 50
+step = 2*pi*deltmax/nrofpointmax
+
+#fbase = constant.simresultfolder + str(stid) + '/exptemp_' + stname +"*"
+fbase = constant.mainfolder + '/simulation/' +  str(stid) + '/exptemp_' + stname +"*"
+print fbase
+files = glob.glob(fbase)
+print len(files)
+def getdeltdelpinfname(fname,stname):
+    newname  = fname[fname.rfind(stname) + len(stname) +1:]
+    delt = newname[:newname.find('_')]
+    newnewname = newname[newname.find('_')+1:] 
+    delp = newnewname[:newnewname.find('.txt')]
+    return [int(delt),int(delp)]
+
+##### 
+# load the data:
+datadict = utils.loaddatafit(constant.datafitfolder  +  str(stid) + '/datafit_' + stname + '.pkl')
+
+
+resdict = {}
+listofangle = []
+for f in files:
+    [delt,delp] = getdeltdelpinfname(f,stname)
+#    if delt !=10:
+#        continue
+    newt = centertheta + delt*np.cos(delp*pi/180)
+    newp = centerphi + delt*np.sin(delp*pi/180)
+    print 't = ' , delt , ' p = ' , delp
+    a_tsys = np.array([])
+    a_errtsys = np.array([])
+    a_tofmax = np.array([])
+    a_errortofmax = np.array([])
+    a_simtofmax = np.array([])
+    a_sim = np.array([])
+    a_doylist = np.array([])
+    simfile = open(f,'r')
+    lines = simfile.readlines()
+    for  l in lines:
+        ls = l.split(' ')
+        y = int(ls[0])
+        d = int(ls[1])
+        if (y,d) in datadict.keys():
+            fitresult = datadict[(y,d)]
+        else:
+            continue        
+        listofangle.append((delt,delp))
+        popt = fitresult[0]
+        #data name
+        simtime = np.linspace(0,24,500)
+        sim = utils.expofunc0(simtime,float(ls[2]),float(ls[3]),float(ls[4]),float(ls[5]))
+        fitresult = datadict[(y,d)]
+        popt = fitresult[0] 
+        tofmax_data = popt[2] 
+        data = utils.expofunc2(simtime,popt[0],popt[1],tofmax_data-3,popt[3],popt[4],popt[5])
+        data = data - (popt[3]*simtime**2 + popt[4]*simtime + popt[5])
+        datapoint = np.interp(float(ls[4]),simtime,data)
+        if datapoint < 0.0001:
+            datapoint =0.001
+        theres = analyse.Analyse()
+        theres.fitresult = fitresult
+        theres.computetsys(float(ls[2]),datapoint)
+        theres.geterrorsonfit2(float(ls[4]))
+        #         plt.plot(simtime,sim)
+#         plt.plot(simtime,data,'--')
+
+# plt.show()
+            
+        day = utils.doytodate(y,d)
+        a_tsys = np.append(a_tsys,theres.tsys)
+#        print ' theres.tsys =  ', theres.tsys
+        a_errtsys = np.append(a_errtsys,theres.errortsys)
+        a_simtofmax = np.append(a_simtofmax,float(ls[4]))
+        a_tofmax = np.append(a_tofmax,tofmax_data -3)
+        a_errortofmax = np.append(a_errortofmax,theres.errortofmax)
+        nroffit = len(a_errortofmax)
+
+
+    deltat = a_simtofmax - a_tofmax
+    resdict[(delt,delp)] = [a_tsys, deltat, a_errtsys, a_errtofmax]
+    outname = constant.mainfolder + '/resdict/' + stname + '.pkl'
+    out = open(outname,'wb')
+    pickle.dump(resdict,out)
+    out.close()
+
+
+
+
+################################
+### minimization procedure: ####
+################################
+def getres(theta,phi,resdictfile):
+    fitfile = open(outname,'rb')
+fitdict = pickle.load(fitfile)
+    resdict[(theta,phi)]
+def func(X):
+    
+
+
+#     tsyss.append(a_tsys)
+#     chi2tofmax = np.sum((deltat)**2 / (a_errortofmax)**2)
+#     chi2tofmax = chi2tofmax / len(a_errortofmax)
+#         ###########################
+#         ## compute Tsys  ##########
+#         ###########################
+#     tsys = 80
+#     chi2tsys = np.sum((a_tsys - tsys)**2/ (a_errtsys*a_tsys)**2 )
+#     chi2tsys = chi2tsys/len(a_errortofmax)
+#     chi2all = chi2tofmax + chi2tsys
+    
+#     a_chi2tofmax = np.append(a_chi2tofmax,chi2tofmax)
+#     a_chi2tsys = np.append(a_chi2tsys,chi2tsys)
+#     a_chi2all = np.append(a_chi2all,chi2all)
+# #    a_theta = np.append(a_theta,delt)
+# #    a_phi = np.append(a_phi,delp)
+#     a_theta = np.append(a_theta,newt)
+#     a_phi = np.append(a_phi,newp)
+#     a_nroffit = np.append(a_nroffit,len(a_errortofmax))
+#     a_meantsys = np.append(a_meantsys,np.mean(a_tsys))
+
+# #for t in tsyss:
+# #    plt.plot(t)
+
+# #print 'minimum chi2 tsys = ' , np.min(a_chi2tsys)
+# #print 'minimum chi2 tofmax = ' , np.min(a_chi2tofmax)
+# amintsys = np.argmin(a_chi2tsys)
+# amintofmax = np.argmin(a_chi2tofmax)
+# #print 'Tsys: theta min  =  ', a_theta[amintsys], ' phi min = ', a_phi[amintsys]
+# #print 'Tofmax: theta min  =  ', a_theta[amintofmax], ' phi min = ', a_phi[amintofmax]
+
+# #print 'nroffit max = ' , np.max(a_nroffit)
+
+# #resultfile = constant.resfolder +  '/res_'+stname
+# #np.savez(resultfile,theta=a_theta, phi=a_phi,fits=a_nroffit,chi2tsys = a_chi2tsys,chi2tofmax=a_chi2tofmax)
+
+
+# #print a_chi2tsys
+# #plt.scatter(a_theta,a_phi,s=200,c=a_chi2all,vmin=np.min(a_chi2all),vmax=np.min(a_chi2all) + 2)
+# fig = plt.figure()
+# plt.scatter(a_theta,a_phi,s=200,c=a_chi2tsys,vmin=np.min(a_chi2tsys),vmax=np.min(a_chi2tsys) + 100)
+# plt.colorbar()
+# fig2 = plt.figure()
+# plt.scatter(a_theta,a_phi,s=200,c=a_chi2tofmax,vmin=np.min(a_chi2tofmax),vmax=np.min(a_chi2tofmax) + 100)
+# #plt.scatter(a_theta,a_phi,s=200,c=a_chi2,vmin=np.min(a_chi2),vmax=np.min(a_chi2) + 2)
+# plt.xlabel('delta theta [deg]')
+# plt.ylabel('delta phi [deg]')
+# plt.colorbar()
+
+# fig3 = plt.figure()
+# plt.scatter(a_theta,a_phi,s=200,c=a_nroffit,vmin=np.min(a_nroffit),vmax=np.max(a_nroffit))
+# #plt.scatter(a_theta,a_phi,s=200,c=a_chi2,vmin=np.min(a_chi2),vmax=np.min(a_chi2) + 2)
+# plt.xlabel('delta theta [deg]')
+# plt.ylabel('delta phi [deg]')
+# print 'a_nroffit, = ', a_nroffit
+# print 'a_chi2tsys = ', a_chi2tsys
+# print 'a_chi2tofmax  = ', a_chi2tofmax
+# plt.colorbar() 
+
+# fig4 = plt.figure()
+# plt.scatter(a_theta,a_phi,s=200,c=a_meantsys,vmin=np.min(a_meantsys),vmax=200)
+# #plt.scatter(a_theta,a_phi,s=200,c=a_chi2,vmin=np.min(a_chi2),vmax=np.min(a_chi2) + 2)
+# plt.xlabel('delta theta [deg]')
+# plt.ylabel('delta phi [deg]')
+# print 'a_nroffit, = ', a_nroffit
+# print 'a_chi2tsys = ', a_chi2tsys
+# print 'a_chi2tofmax  = ', a_chi2tofmax
+# plt.colorbar() 
+
+        
+# plt.show()
+
+
+# # #    it +=1
+    
+    
+# # figchi2 = plt.figure()
+# # figchi2.suptitle(stname)
+# # plt.hist(a_chi2,bins=50)
+# # plt.xlabel('chi 2')
+# #plt.show()

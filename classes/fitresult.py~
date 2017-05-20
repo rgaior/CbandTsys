@@ -1,0 +1,13 @@
+import os
+import sys
+cwd = os.getcwd()
+utilspath = cwd + '/../utils/'
+sys.path.append(utilspath)
+import utils
+import constant
+
+class Fitresult:
+    def __init__(self, type, name = None, freq=None, newtheta=0, newphi=0):
+        self.type = type
+        self.pattern = {}
+        self.antennageo = ()

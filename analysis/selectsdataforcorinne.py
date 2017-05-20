@@ -1,0 +1,104 @@
+#######################################
+## make a selection of the day       ##
+## usable for the analysis based on  ##
+## an iterative fit of the           ##
+## temperature dependence            ##
+#######################################
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import os
+cwd = os.getcwd()
+classpath = cwd + '/../classes/'
+utilspath = cwd + '/../utils/'
+sys.path.append(utilspath)
+sys.path.append(classpath)
+import constant
+import utils
+import pickle
+import dataset
+import argparse
+import scipy.stats as sstat
+import datetime
+from itertools import compress
+
+############################
+##  argument parser       ##
+############################
+parser = argparse.ArgumentParser()
+parser.add_argument("stname", type=str, nargs='?',default='popey', help="station name")
+parser.add_argument("-save", help="save if True", action="store_true")
+parser.add_argument("-savefit", help="save if True", action="store_true")
+args = parser.parse_args()
+save = args.save
+savefit = args.savefit
+st = args.stname
+if st == 'all':
+    stnames = constant.GDstationidbyname.keys()
+else:
+    stnames = [st]
+
+firstselected = []
+
+for stname in stnames:
+    if stname == 'juan' or stname == 'luis':
+        continue
+    print stname
+    stid = constant.GIGASstationidbyname[stname]
+
+    humidity = np.array([])
+    time = np.array([])
+    a_radio = np.array([])
+    a_temp = np.array([])
+    
+    nrofday = constant.doy
+    a_rms = np.array([])
+    a_minmax = np.array([])
+    counter = 0
+    a_srms = np.array([])
+    a_tempsrms = np.array([])
+    for y in [2015,2016,2017]:
+        for d in range(1,nrofday[y]+1,1):
+            ad_srms = np.array([])
+            ad_tempsrms = np.array([])
+            outfolder = constant.datafolder + str(stid)
+            datafilename = outfolder + '/data_' + str(int(y)) + '_' + str(int(d)) + '.pkl'
+            if os.path.isfile(datafilename):
+                datafile = open(datafilename,'rb')
+            else:
+                continue
+            thedata = pickle.load(datafile)
+
+          #### select the non sun region
+            size = len(thedata.data)
+            datemiddle = thedata.timedata[int(size/2)]
+            day = datemiddle.year
+            dsun = datetime.datetime(datemiddle.year, datemiddle.month,datemiddle.day,constant.GDnametom[stname]/100,0,0)
+            delta = datetime.timedelta(0.17) #
+            radio = thedata.data[ (thedata.timedata < dsun - delta) | (thedata.timedata > dsun + delta) ]
+            temp = thedata.tempLL[ (thedata.timedata < dsun - delta) | (thedata.timedata > dsun + delta) ]
+            time = thedata.timedata[ (thedata.timedata < dsun - delta) | (thedata.timedata > dsun + delta) ]
+
+        #### humidity selection:
+            humsel = 90
+            if (thedata.humidity > humsel).any():
+                datafile.close()
+                continue
+
+        #### nr or point selection:
+            nrofpointintrace = 200
+            if size < nrofpointintrace:
+                datafile.close()
+                continue
+
+
+
+            minradio = np.min(thedata.data)
+            maxradio = np.max(thedata.data)
+
+        #### diff min max selection:
+            diffmax = constant.diffmax
+            diffmin = constant.diffmin
+            if maxradio - minradio < diffmin:
+                rmsradio = np.std(radio)
+                print ' rms radio = ' , rmsradio
